@@ -50,3 +50,26 @@ app.post('/participants', async (req, res) => {
     }
 }
 );
+
+app.get('/participants', async (req, res) => {
+    const client = new MongoClient(process.env.DB_URL);
+    try {
+        await client.connect();
+        const db = client.db(process.env.DB_NAME);
+        const participantsCollection = db.collection('participants');
+        const participants = await participantsCollection.find({}).toArray();
+        res.status(200).send(participants);
+    } catch (err) {
+        res.status(500).send(err);
+    }
+    finally {
+        await client.close();
+    }
+});
+
+
+
+
+
+
+
