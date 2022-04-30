@@ -11,11 +11,11 @@ app.use(cors());
 app.use(express.json());
 app.listen(5000);
 
-
-
 const userSchema = joi.object({
     name: joi.string().min(1).required()
 });
+
+const client = new MongoClient(process.env.DB_URL);
 
 app.post('/participants', async (req, res) => {
     const { error } = userSchema.validate(req.body);
@@ -23,7 +23,6 @@ app.post('/participants', async (req, res) => {
         res.status(422).send(error.details.message);
         return;
     }
-    const client = new MongoClient(process.env.DB_URL);
     try {
         await client.connect();
         const db = client.db(process.env.DB_NAME);
@@ -44,7 +43,7 @@ app.post('/participants', async (req, res) => {
 
         await participantsCollection.insertOne({ name: req.body.name, lastStatus: Date.now() });
         await messagesCollection.insertOne(message);
-        res.status(201);
+        res.status(201).send('');
     } catch (err) {
         res.status(500).send(err);
     } finally {
@@ -54,7 +53,6 @@ app.post('/participants', async (req, res) => {
 );
 
 app.get('/participants', async (req, res) => {
-    const client = new MongoClient(process.env.DB_URL);
     try {
         await client.connect();
         const db = client.db(process.env.DB_NAME);
@@ -81,7 +79,6 @@ app.post('/messages', async (req, res) => {
         res.status(422).send(error.details.message);
         return;
     }
-    const client = new MongoClient(process.env.DB_URL);
     try {
         await client.connect();
         const db = client.db(process.env.DB_NAME);
@@ -100,7 +97,7 @@ app.post('/messages', async (req, res) => {
             time: dayjs().format('YYYY-MM-DD HH:mm:ss:SSS')
         }
         await messagesCollection.insertOne(message);
-        res.status(201);
+        res.status(201).send('');
     } catch (err) {
         res.status(500).send(err);
     } finally {
@@ -109,7 +106,6 @@ app.post('/messages', async (req, res) => {
 });
 
 app.get('/messages', async (req, res) => {
-    const client = new MongoClient(process.env.DB_URL);
     try {
         await client.connect();
         const db = client.db(process.env.DB_NAME);
@@ -135,3 +131,55 @@ app.get('/messages', async (req, res) => {
         await client.close();
     }
 });
+
+//post method to update the last status of the user get from headers
+app.post('/status', async (req, res) => {
+    try {
+        await client.connect();
+        const db = client.db(process.env.DB_NAME);
+        const participantsCollection = db.collection('participants');
+        const user = await participantsCollection.findOne({ name: req.headers.user });
+        console.log(user);
+        if (!user) {
+            res.status(404).send('User not found');
+            return;
+        }
+        await participantsCollection.updateOne({ name: req.headers.user }, { $set: { lastStatus: Date.now() } });
+        res.status(201).send('');
+    } catch (err) {
+        res.status(500).send(err);
+    }
+    finally {
+        await client.close();
+    }
+});
+
+//refactor to not crash the server
+const deleteInativeUsers = async () => { 
+    try {
+        await client.connect();
+        const db = client.db(process.env.DB_NAME);
+        const participantsCollection = db.collection('participants');
+        const messagesCollection = db.collection('messages');
+        const users = await participantsCollection.find({}).toArray();
+        users.forEach(async (user) => {
+            if (Date.now() - user.lastStatus > 10000) {
+                await participantsCollection.deleteOne({ name: user.name });
+                await messagesCollection.insertOne({
+                    from: user.name,
+                    to: 'Todos',
+                    text: 'saiu da sala...',
+                    type: 'status',
+                    time: dayjs().format('YYYY-MM-DD HH:mm:ss:SSS')
+                });
+            }
+        }
+        );
+    } catch (err) {
+        console.log(err);
+    }
+    finally {
+        await client.close();
+    }
+}
+setInterval(deleteInativeUsers, 10000);
