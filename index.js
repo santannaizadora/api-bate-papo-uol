@@ -11,6 +11,8 @@ app.use(cors());
 app.use(express.json());
 app.listen(5000);
 
+
+
 const userSchema = joi.object({
     name: joi.string().min(1).required()
 });
@@ -67,9 +69,41 @@ app.get('/participants', async (req, res) => {
     }
 });
 
+const messageSchema = joi.object({
+    to: joi.string().min(1).required(),
+    text: joi.string().min(1).required(),
+    type: joi.string().valid("message", "private_message").required()
+});
 
-
-
-
-
-
+app.post('/messages', async (req, res) => {
+    const { error } = messageSchema.validate(req.body);
+    if (error) {
+        res.status(422).send(error.details.message);
+        return;
+    }
+    const client = new MongoClient(process.env.DB_URL);
+    try {
+        await client.connect();
+        const db = client.db(process.env.DB_NAME);
+        const participantsCollection = db.collection('participants');
+        const messagesCollection = db.collection('messages');
+        const user = await participantsCollection.findOne({ name: req.body.from });
+        if (user) {
+            res.status(409);
+            return;
+        }
+        const message = {
+            from: req.body.from,
+            to: req.body.to,
+            text: req.body.text,
+            type: req.body.type,
+            time: dayjs().format('YYYY-MM-DD HH:mm:ss:SSS')
+        }
+        await messagesCollection.insertOne(message);
+        res.status(201);
+    } catch (err) {
+        res.status(500).send(err);
+    } finally {
+        await client.close();
+    }
+});
