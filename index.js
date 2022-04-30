@@ -132,7 +132,6 @@ app.get('/messages', async (req, res) => {
     }
 });
 
-//post method to update the last status of the user get from headers
 app.post('/status', async (req, res) => {
     try {
         await client.connect();
@@ -154,27 +153,26 @@ app.post('/status', async (req, res) => {
     }
 });
 
-//refactor to not crash the server
-const deleteInativeUsers = async () => { 
+async function deleteUsers() {
     try {
         await client.connect();
         const db = client.db(process.env.DB_NAME);
         const participantsCollection = db.collection('participants');
         const messagesCollection = db.collection('messages');
         const users = await participantsCollection.find({}).toArray();
-        users.forEach(async (user) => {
-            if (Date.now() - user.lastStatus > 10000) {
-                await participantsCollection.deleteOne({ name: user.name });
-                await messagesCollection.insertOne({
-                    from: user.name,
-                    to: 'Todos',
-                    text: 'saiu da sala...',
-                    type: 'status',
-                    time: dayjs().format('YYYY-MM-DD HH:mm:ss:SSS')
-                });
+        const now = Date.now();
+        const usersToDelete = users.filter(user => now - user.lastStatus > 10000);
+        await participantsCollection.deleteMany({ name: { $in: usersToDelete.map(user => user.name) } });
+        await messagesCollection.insertMany(usersToDelete.map(user => {
+            return {
+                from: user.name,
+                to: 'Todos',
+                text: 'saiu da sala...',
+                type: 'status',
+                time: dayjs().format('YYYY-MM-DD HH:mm:ss:SSS')
             }
         }
-        );
+        ));
     } catch (err) {
         console.log(err);
     }
@@ -182,4 +180,4 @@ const deleteInativeUsers = async () => {
         await client.close();
     }
 }
-setInterval(deleteInativeUsers, 10000);
+setInterval(deleteUsers, 15000);
