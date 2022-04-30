@@ -90,7 +90,7 @@ app.post('/messages', async (req, res) => {
             return;
         }
         const message = {
-            from: req.body.from,
+            from: req.headers.user,
             to: req.body.to,
             text: req.body.text,
             type: req.body.type,
@@ -119,7 +119,7 @@ app.get('/messages', async (req, res) => {
             return;
         }
         const messages = await messagesCollection
-            .find({ $or: [{ to: 'Todos' }, { from: req.headers.user }, { to: req.headers.user }] })
+            .find({ $or: [{ to: 'Todos' }, { from: req.headers.user }, { to: req.headers.user }, {type: 'message'}] })
             .sort({ _id: -1 })
             .limit(limit)
             .toArray();
@@ -162,6 +162,7 @@ async function deleteUsers() {
         const users = await participantsCollection.find({}).toArray();
         const now = Date.now();
         const usersToDelete = users.filter(user => now - user.lastStatus > 10000);
+        if(usersToDelete.length > 0) {
         await participantsCollection.deleteMany({ name: { $in: usersToDelete.map(user => user.name) } });
         await messagesCollection.insertMany(usersToDelete.map(user => {
             return {
@@ -173,6 +174,7 @@ async function deleteUsers() {
             }
         }
         ));
+        }
     } catch (err) {
         console.log(err);
     }
