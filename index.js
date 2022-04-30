@@ -107,3 +107,31 @@ app.post('/messages', async (req, res) => {
         await client.close();
     }
 });
+
+app.get('/messages', async (req, res) => {
+    const client = new MongoClient(process.env.DB_URL);
+    try {
+        await client.connect();
+        const db = client.db(process.env.DB_NAME);
+        const messagesCollection = db.collection('messages');
+        const participantsCollection = db.collection('participants');
+        const query = req.query;
+        const limit = query.limit ? parseInt(query.limit) : 0;
+        const user = await participantsCollection.findOne({ name: req.headers.user });
+        if (!user) {
+            res.status(409).send('User not found');
+            return;
+        }
+        const messages = await messagesCollection
+            .find({ $or: [{ to: 'Todos' }, { from: req.headers.user }, { to: req.headers.user }] })
+            .sort({ _id: -1 })
+            .limit(limit)
+            .toArray();
+        res.status(200).send(messages.reverse());
+    } catch (err) {
+        res.status(500).send(err);
+    }
+    finally {
+        await client.close();
+    }
+});
